@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Menu</title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .d-none {
+            display: none;
+        }
+        .list-group-item {
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-light bg-light">
@@ -39,13 +47,13 @@
                 <div class="form-group">
                     <label for="type">Tipo</label>
                     <select id="type" class="form-control" required>
-                        <option value="income">Ingreso</option>
+                        <option value="income" selected>Ingreso</option>
                         <option value="expense">Gasto</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label for="amount">Monto</label>
-                    <input type="number" class="form-control" id="amount" required>
+                    <input type="text" class="form-control" id="amount" required>
                 </div>
                 <div class="form-group">
                     <label for="description">Descripción</label>
@@ -53,17 +61,17 @@
                 </div>
                 <div class="form-group">
                     <label for="category">Categoría</label>
-                    <input type="text" class="form-control" id="category" list="categoryList" required>
-                    <datalist id="categoryList"></datalist>
+                    <input type="text" class="form-control" id="category" required>
+                    <ul class="list-group d-none" id="categoryList"></ul>
                     <button type="button" class="btn btn-link" id="addCategoryBtn">Registrar nueva categoría</button>
                 </div>
                 <div class="form-group">
                     <label for="transactionDate">Fecha de Transacción</label>
                     <input type="date" class="form-control" id="transactionDate" required>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="titheStatusContainer">
                     <label for="titheStatus">Estado del Diezmo</label>
-                    <select id="titheStatus" class="form-control" required>
+                    <select id="titheStatus" class="form-control">
                         <option value="paid">Pagado</option>
                         <option value="pending">Pendiente</option>
                     </select>
@@ -178,17 +186,45 @@
             });
         }
 
-        // Filtrar categorías en tiempo real
+        // Filtrar categorías en tiempo real y mostrar en lista
         document.getElementById('category').addEventListener('input', () => {
             const input = document.getElementById('category').value.toLowerCase();
             const filteredCategories = categories.filter(category => category.toLowerCase().includes(input));
             const categoryList = document.getElementById('categoryList');
             categoryList.innerHTML = '';
-            filteredCategories.forEach(category => {
-                const option = document.createElement('option');
-                option.value = category;
-                categoryList.appendChild(option);
-            });
+            if (filteredCategories.length > 0) {
+                categoryList.classList.remove('d-none');
+                filteredCategories.forEach(category => {
+                    const item = document.createElement('li');
+                    item.classList.add('list-group-item');
+                    item.textContent = category;
+                    item.addEventListener('click', () => {
+                        document.getElementById('category').value = category;
+                        categoryList.classList.add('d-none');
+                    });
+                    categoryList.appendChild(item);
+                });
+            } else {
+                categoryList.classList.add('d-none');
+            }
+        });
+
+        // Mostrar/Ocultar Estado del Diezmo según el tipo
+        document.getElementById('type').addEventListener('change', (e) => {
+            const titheStatusContainer = document.getElementById('titheStatusContainer');
+            if (e.target.value === 'income') {
+                titheStatusContainer.classList.remove('d-none');
+            } else {
+                titheStatusContainer.classList.add('d-none');
+            }
+        });
+
+        // Formatear monto mientras se tipea
+        document.getElementById('amount').addEventListener('input', (e) => {
+            const value = e.target.value.replace(/\./g, ''); // Eliminar puntos existentes
+            if (value) {
+                e.target.value = parseInt(value).toLocaleString('es-ES');
+            }
         });
 
         // Registrar transacción
@@ -196,11 +232,10 @@
             e.preventDefault();
             console.log('Submit transaction form');
             const type = document.getElementById('type').value;
-            const amount = parseFloat(document.getElementById('amount').value);
+            const amount = parseFloat(document.getElementById('amount').value.replace(/\./g, '')); // Eliminar puntos antes de convertir a número
             const description = document.getElementById('description').value;
             const category = document.getElementById('category').value;
             const transactionDate = document.getElementById('transactionDate').value;
-            const titheStatus = document.getElementById('titheStatus').value;
 
             // Verifica que la fecha no esté vacía y conviértela a un objeto Date
             if (!transactionDate) {
@@ -217,6 +252,8 @@
                 return;
             }
 
+            const titheStatus = type === 'income' ? document.getElementById('titheStatus').value : null;
+
             try {
                 await addDoc(collection(db, 'transactions'), {
                     uid: currentUser.uid,
@@ -229,6 +266,7 @@
                 });
                 document.getElementById('transactionForm').reset();
                 $('#successModal').modal('show');
+                document.getElementById('titheStatusContainer').classList.add('d-none'); // Reset tithe status visibility
             } catch (error) {
                 console.error('Error registrando la transacción: ', error);
                 $('#errorModal').modal('show');

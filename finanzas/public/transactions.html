@@ -6,18 +6,18 @@
     <title>Mis Transacciones</title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
-        .bg-light-red {
-            background-color: #f8d7da;
-        }
-        .bg-light-green {
-            background-color: #d4edda;
-        }
         .pagination-container {
             display: flex;
             justify-content: flex-end;
         }
         .container {
             margin-top: 20px;
+        }
+        .table-responsive {
+            overflow-x: auto;
+        }
+        .table td, .table th {
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -59,8 +59,8 @@
         <div class="alert alert-danger d-none" id="errorAlert" role="alert">
             Hubo un problema al actualizar la transacción. Por favor, inténtelo de nuevo.
         </div>
-        <div class="mt-5">
-            <table class="table">
+        <div class="mt-5 table-responsive">
+            <table class="table table-striped">
                 <thead>
                     <tr>
                         <th>Tipo</th>
@@ -76,7 +76,7 @@
                     <!-- Aquí se insertarán las transacciones del usuario -->
                 </tbody>
             </table>
-            <p id="noTransactionsMessage" class="text-center mt-3 bg-light-red p-3 d-none">No existen transacciones disponibles</p>
+            <p id="noTransactionsMessage" class="text-center mt-3 p-3 d-none">No existen transacciones disponibles</p>
         </div>
         <div class="pagination-container mt-4">
             <ul class="pagination">
@@ -220,7 +220,6 @@
 
             paginatedTransactions.forEach((transaction) => {
                 const row = document.createElement('tr');
-                row.classList.add(transaction.type === 'income' ? 'bg-light-green' : 'bg-light-red');
                 row.innerHTML = `
                     <td><input type="text" class="form-control" value="${transaction.type === 'income' ? 'Ingreso' : 'Gasto'}" disabled></td>
                     <td><input type="text" class="form-control" value="${formatNumber(transaction.amount)}" disabled></td>
