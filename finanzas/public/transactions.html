@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Transacciones</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .bg-light-red {
+            background-color: #f8d7da;
+        }
+        .bg-light-green {
+            background-color: #d4edda;
+        }
+        .pagination-container {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .container {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <a class="navbar-brand" href="#">Finanzas</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="menu.html">Registrar Transacción</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="transactions.html">Mis Transacciones</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="resumen.html">Resumen</a>
+                </li>
+            </ul>
+            <span class="navbar-text ml-auto" id="userEmail"></span>
+            <button id="logout" class="btn btn-danger ml-2">Logout</button>
+        </div>
+    </nav>
+    
+    <div class="container">
+        <h1>Mis Transacciones</h1>
+        <div class="form-inline my-3">
+            <label for="startDate" class="mr-2">Fecha Inicio:</label>
+            <input type="date" id="startDate" class="form-control mr-2">
+            <label for="endDate" class="mr-2">Fecha Fin:</label>
+            <input type="date" id="endDate" class="form-control mr-2">
+            <button type="button" class="btn btn-primary" id="filterButton">Filtrar</button>
+        </div>
+        <div class="alert alert-success d-none" id="successAlert" role="alert">
+            La transacción se actualizó correctamente.
+        </div>
+        <div class="alert alert-danger d-none" id="errorAlert" role="alert">
+            Hubo un problema al actualizar la transacción. Por favor, inténtelo de nuevo.
+        </div>
+        <div class="mt-5">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Monto</th>
+                        <th>Descripción</th>
+                        <th>Categoría</th>
+                        <th>Diezmo</th>
+                        <th>Fecha</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="transactionsTable">
+                    <!-- Aquí se insertarán las transacciones del usuario -->
+                </tbody>
+            </table>
+            <p id="noTransactionsMessage" class="text-center mt-3 bg-light-red p-3 d-none">No existen transacciones disponibles</p>
+        </div>
+        <div class="pagination-container mt-4">
+            <ul class="pagination">
+                <li class="page-item"><a class="page-link" href="#" id="prevPage">Anterior</a></li>
+                <li class="page-item disabled"><a class="page-link" href="#" id="pageInfo"></a></li>
+                <li class="page-item"><a class="page-link" href="#" id="nextPage">Siguiente</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmación de Cambios -->
+    <div class="modal fade" id="changeTitheStatusModal" tabindex="-1" aria-labelledby="changeTitheStatusModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="changeTitheStatusModalLabel">Confirmar Cambio de Diezmo</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    ¿Estás seguro de que deseas cambiar el estado del diezmo?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="confirmChangeTitheStatusBtn">Guardar Cambio</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmación de Eliminación -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Confirmar Eliminación</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    ¿Estás seguro de que deseas eliminar esta transacción?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-auth.js";
+        import { auth, db } from './firebase-config.js';
+        import { collection, query, where, getDocs, orderBy, doc, updateDoc, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-firestore.js";
+
+        console.log('Script loaded');
+        let currentUser;
+        let transactionIdToDelete = null;
+        let transactions = [];
+        let currentPage = 1;
+        const transactionsPerPage = 7;
+        let currentTitheStatus = null;
+        let transactionIdToUpdate = null;
+
+        // Verificar el estado de autenticación
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                console.log('No user is signed in');
+                window.location.href = 'index.html';
+            } else {
+                console.log('User signed in: ', user.uid);
+                currentUser = user;
+                document.getElementById('userEmail').textContent = user.displayName || user.email;
+                loadTransactions();
+            }
+        });
+
+        // Cerrar sesión
+        document.getElementById('logout').addEventListener('click', () => {
+            signOut(auth).then(() => {
+                window.location.href = 'index.html';
+            });
+        });
+
+        // Mostrar alertas
+        function showAlert(type, message) {
+            const alert = document.getElementById(type === 'success' ? 'successAlert' : 'errorAlert');
+            alert.textContent = message;
+            alert.classList.remove('d-none');
+            setTimeout(() => {
+                alert.classList.add('d-none');
+            }, 3000);
+        }
+
+        // Formatear números
+        function formatNumber(number) {
+            return number.toLocaleString('es-ES');
+        }
+
+        // Cargar transacciones del usuario con filtro de fechas
+        async function loadTransactions(startDate = null, endDate = null) {
+            console.log('Loading transactions');
+            transactions = []; // Reiniciar transacciones
+            currentPage = 1; // Reiniciar página actual
+
+            let q = query(collection(db, 'transactions'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
+
+            if (startDate) {
+                const startTimestamp = Timestamp.fromDate(new Date(startDate));
+                q = query(q, where('date', '>=', startTimestamp));
+            }
+            if (endDate) {
+                const endTimestamp = Timestamp.fromDate(new Date(endDate));
+                q = query(q, where('date', '<=', endTimestamp));
+            }
+
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                document.getElementById('noTransactionsMessage').classList.remove('d-none');
+            } else {
+                document.getElementById('noTransactionsMessage').classList.add('d-none');
+                querySnapshot.forEach((docSnapshot) => {
+                    const data = docSnapshot.data();
+                    transactions.push({ id: docSnapshot.id, ...data });
+                });
+                renderTransactions();
+            }
+        }
+
+        // Renderizar transacciones con paginación
+        function renderTransactions() {
+            const transactionsTable = document.getElementById('transactionsTable');
+            transactionsTable.innerHTML = '';
+
+            const start = (currentPage - 1) * transactionsPerPage;
+            const end = start + transactionsPerPage;
+            const paginatedTransactions = transactions.slice(start, end);
+
+            paginatedTransactions.forEach((transaction) => {
+                const row = document.createElement('tr');
+                row.classList.add(transaction.type === 'income' ? 'bg-light-green' : 'bg-light-red');
+                row.innerHTML = `
+                    <td><input type="text" class="form-control" value="${transaction.type === 'income' ? 'Ingreso' : 'Gasto'}" disabled></td>
+                    <td><input type="text" class="form-control" value="${formatNumber(transaction.amount)}" disabled></td>
+                    <td><input type="text" class="form-control" value="${transaction.description}" disabled></td>
+                    <td><input type="text" class="form-control" value="${transaction.category}" disabled></td>
+                    <td>
+                        <select class="form-control tithe-status" data-id="${transaction.id}">
+                            <option value="pending" ${transaction.titheStatus === 'pending' ? 'selected' : ''}>Pendiente</option>
+                            <option value="paid" ${transaction.titheStatus === 'paid' ? 'selected' : ''}>Pagado</option>
+                        </select>
+                    </td>
+                    <td>${transaction.date.toDate().toLocaleDateString('es-ES')}</td>
+                    <td>
+                        <button class="btn btn-warning btn-sm edit-btn">Editar</button>
+                        <button class="btn btn-danger btn-sm delete-btn" data-id="${transaction.id}">Eliminar</button>
+                        <button class="btn btn-success btn-sm save-btn d-none">Guardar</button>
+                        <button class="btn btn-secondary btn-sm cancel-btn d-none">Cancelar</button>
+                    </td>
+                `;
+                transactionsTable.appendChild(row);
+
+                const editBtn = row.querySelector('.edit-btn');
+                const deleteBtn = row.querySelector('.delete-btn');
+                const saveBtn = row.querySelector('.save-btn');
+                const cancelBtn = row.querySelector('.cancel-btn');
+                const inputs = row.querySelectorAll('input');
+                const titheStatusSelect = row.querySelector('.tithe-status');
+
+                editBtn.addEventListener('click', () => {
+                    inputs.forEach(input => input.disabled = false);
+                    titheStatusSelect.disabled = false;
+                    editBtn.classList.add('d-none');
+                    deleteBtn.classList.add('d-none');
+                    saveBtn.classList.remove('d-none');
+                    cancelBtn.classList.remove('d-none');
+                });
+
+                cancelBtn.addEventListener('click', () => {
+                    inputs.forEach(input => input.disabled = true);
+                    titheStatusSelect.disabled = true;
+                    editBtn.classList.remove('d-none');
+                    deleteBtn.classList.remove('d-none');
+                    saveBtn.classList.add('d-none');
+                    cancelBtn.classList.add('d-none');
+                    loadTransactions();  // Revertir los cambios
+                });
+
+                titheStatusSelect.addEventListener('change', (e) => {
+                    transactionIdToUpdate = e.target.getAttribute('data-id');
+                    currentTitheStatus = e.target.value;
+                    $('#changeTitheStatusModal').modal('show');
+                });
+
+                saveBtn.addEventListener('click', async () => {
+                    const updatedType = inputs[0].value === 'Ingreso' ? 'income' : 'expense';
+                    const updatedAmount = parseFloat(inputs[1].value.replace(/\./g, '')); // Remover puntos antes de convertir a número
+                    const updatedDescription = inputs[2].value;
+                    const updatedCategory = inputs[3].value;
+                    const updatedTitheStatus = titheStatusSelect.value;
+
+                    try {
+                        await updateDoc(doc(db, 'transactions', transaction.id), {
+                            type: updatedType,
+                            amount: updatedAmount,
+                            description: updatedDescription,
+                            category: updatedCategory,
+                            titheStatus: updatedTitheStatus
+                        });
+                        inputs.forEach(input => input.disabled = true);
+                        titheStatusSelect.disabled = true;
+                        editBtn.classList.remove('d-none');
+                        deleteBtn.classList.remove('d-none');
+                        saveBtn.classList.add('d-none');
+                        cancelBtn.classList.add('d-none');
+                        showAlert('success', 'La transacción se actualizó correctamente.');
+                        updateSummaryCards(); // Actualizar tarjetas de resumen
+                    } catch (error) {
+                        console.error('Error actualizando la transacción: ', error);
+                        showAlert('error', 'Hubo un problema al actualizar la transacción. Por favor, inténtelo de nuevo.');
+                    }
+                });
+
+                deleteBtn.addEventListener('click', () => {
+                    transactionIdToDelete = transaction.id;
+                    $('#deleteModal').modal('show');
+                });
+            });
+
+            updatePaginationControls();
+        }
+
+        // Confirmar cambio de estado del diezmo
+        document.getElementById('confirmChangeTitheStatusBtn').addEventListener('click', async () => {
+            try {
+                await updateDoc(doc(db, 'transactions', transactionIdToUpdate), {
+                    titheStatus: currentTitheStatus
+                });
+                $('#changeTitheStatusModal').modal('hide');
+                loadTransactions();  // Volver a cargar las transacciones
+                showAlert('success', 'El estado del diezmo se actualizó correctamente.');
+                updateSummaryCards(); // Actualizar tarjetas de resumen
+            } catch (error) {
+                console.error('Error actualizando el estado del diezmo: ', error);
+                $('#changeTitheStatusModal').modal('hide');
+                showAlert('error', 'Hubo un problema al actualizar el estado del diezmo. Por favor, inténtelo de nuevo.');
+            }
+        });
+
+        // Actualizar controles de paginación
+        function updatePaginationControls() {
+            const prevPage = document.getElementById('prevPage');
+            const nextPage = document.getElementById('nextPage');
+            const pageInfo = document.getElementById('pageInfo');
+
+            const totalPages = Math.ceil(transactions.length / transactionsPerPage);
+            pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
+
+            prevPage.classList.toggle('disabled', currentPage === 1);
+            nextPage.classList.toggle('disabled', currentPage === totalPages);
+
+            prevPage.onclick = () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTransactions();
+                }
+            };
+
+            nextPage.onclick = () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTransactions();
+                }
+            };
+        }
+
+        // Confirmar eliminación
+        document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+            try {
+                await deleteDoc(doc(db, 'transactions', transactionIdToDelete));
+                $('#deleteModal').modal('hide');
+                loadTransactions();
+                showAlert('success', 'La transacción se eliminó correctamente.');
+                updateSummaryCards(); // Actualizar tarjetas de resumen
+            } catch (error) {
+                console.error('Error eliminando la transacción: ', error);
+                $('#deleteModal').modal('hide');
+                showAlert('error', 'Hubo un problema al eliminar la transacción. Por favor, inténtelo de nuevo.');
+            }
+        });
+
+        // Filtrar transacciones por fecha
+        document.getElementById('filterButton').addEventListener('click', () => {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            loadTransactions(startDate, endDate);
+        });
+
+        // Actualizar tarjetas de resumen
+        async function updateSummaryCards() {
+            const summarySnapshot = await getDocs(query(collection(db, 'transactions'), where('uid', '==', currentUser.uid)));
+            let totalIncome = 0;
+            let totalExpense = 0;
+            let pendingTithe = 0;
+            let paidTithe = 0;
+
+            summarySnapshot.forEach(docSnapshot => {
+                const data = docSnapshot.data();
+                if (data.type === 'income') {
+                    totalIncome += data.amount;
+                    if (data.titheStatus === 'pending') {
+                        pendingTithe += data.amount * 0.1;
+                    } else if (data.titheStatus === 'paid') {
+                        paidTithe += data.amount * 0.1;
+                    }
+                } else {
+                    totalExpense += data.amount;
+                }
+            });
+
+            document.getElementById('totalIncome').textContent = formatNumber(totalIncome);
+            document.getElementById('totalExpense').textContent = formatNumber(totalExpense);
+            document.getElementById('tithe').textContent = formatNumber(totalIncome * 0.1);
+            document.getElementById('pendingTithe').textContent = formatNumber(pendingTithe);
+            document.getElementById('paidTithe').textContent = formatNumber(paidTithe);
+        }
+    </script>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
